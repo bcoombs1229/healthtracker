@@ -2,4 +2,4 @@ renpho-api
 gspread
 feedparser
 google-auth
-google-generativeai
+google-genai
