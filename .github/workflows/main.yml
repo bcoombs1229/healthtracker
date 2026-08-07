@@ -27,4 +27,5 @@ jobs:
           RENPHO_PASSWORD: ${{ secrets.RENPHO_PASSWORD }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python sync_tracker.py
