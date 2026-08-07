@@ -1,0 +1,4 @@
+renpho-api
+gspread
+feedparser
+google-auth
