@@ -156,6 +156,15 @@
                 </div>
             </header>
 
+            <div class="px-6 pt-6" id="workout-context-container">
+                <div class="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/50 shadow-inner">
+                    <h3 class="text-sm font-bold text-slate-300 mb-2 flex items-center">
+                        <i class="fa-solid fa-clipboard-list text-blue-400 mr-2"></i> Workout Summary
+                    </h3>
+                    <p class="text-sm text-slate-400 whitespace-pre-wrap leading-relaxed" id="workout-description">Loading summary...</p>
+                </div>
+            </div>
+
             <div class="px-6 py-6 space-y-4" id="exercise-list">
                 <!-- Exercises injected here via JS -->
             </div>
@@ -348,7 +357,19 @@
             if (realData && realData.workouts && realData.workouts[program]) {
                 const progData = realData.workouts[program];
                 document.getElementById('preview-title').innerText = progData.title;
-                document.getElementById('preview-desc').innerText = `${progData.exercises.length} movements detected.`;
+                
+                let descText = "";
+                if (Array.isArray(progData.exercises)) {
+                    descText = `${progData.exercises.length} movements detected.`;
+                } else if (progData.exercises.description) {
+                    // Show a truncated preview on the home dashboard
+                    descText = progData.exercises.description;
+                    if (descText.length > 70) descText = descText.substring(0, 70) + '...';
+                } else {
+                    descText = "No description available.";
+                }
+                
+                document.getElementById('preview-desc').innerText = descText;
             } else {
                 // Fallback if no data found for today
                 document.getElementById('preview-title').innerText = t.defaultTitle;
@@ -370,11 +391,26 @@
             document.getElementById('workout-header-tag').innerText = tag;
             document.getElementById('workout-header-title').innerText = data.title;
 
+            // Handle the new Payload structure (Object instead of Array)
+            let exList = [];
+            let descText = "";
+            
+            if (Array.isArray(data.exercises)) {
+                exList = data.exercises;
+                descText = "Workout summary not available for this older entry.";
+            } else {
+                exList = data.exercises.exercises || [];
+                descText = data.exercises.description || "No description provided.";
+            }
+            
+            // Set the workout context text in the UI
+            document.getElementById('workout-description').innerText = descText;
+
             // Build Exercise List dynamically
             const list = document.getElementById('exercise-list');
             list.innerHTML = ''; 
 
-            data.exercises.forEach((ex, index) => {
+            exList.forEach((ex, index) => {
                 // Determine Trend Icon
                 let trendHtml = '';
                 if(ex.trend === 'up') trendHtml = `<i class="fa-solid fa-arrow-trend-up text-emerald-400"></i>`;
