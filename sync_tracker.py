@@ -67,6 +67,9 @@ def get_and_parse_pushjerk(gemini_api_key):
         
         prompt = f"""
         You are a fitness data extraction bot. Read the following CrossFit workout description and extract the distinct exercises.
+        CRITICAL RULE: DO NOT extract any exercises from the "Warm up", "Mobility", or "Cooldown" sections. 
+        ONLY extract the core exercises from the main WOD, Strength, Weightlifting, or Metcon sections that require tracking.
+        
         Return ONLY a raw JSON array of objects. Do not include markdown formatting, backticks, or any conversational text.
         Each object must have exactly these keys:
         "name": (String) The name of the exercise.
@@ -118,8 +121,32 @@ def get_and_parse_pushjerk(gemini_api_key):
         }
         return title, payload
 
+# --- 2.5 Daily Quote ---
+def get_daily_quote(gemini_api_key):
+    """Uses Gemini to generate a raw, unfiltered motivational quote."""
+    print("Generating daily motivational quote...")
+    if not gemini_api_key:
+        return "Nobody cares. Work harder."
+        
+    try:
+        client = genai.Client(api_key=gemini_api_key)
+        prompt = """
+        Generate a raw, adult, unfiltered fitness motivational quote. 
+        It should be intense, gritty, and use strong language (no holds barred, David Goggins style). 
+        Do NOT use quotes around it. No hashtags. Keep it under 2 sentences. 
+        Return ONLY the raw text.
+        """
+        response = client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt,
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Quote Generation Error: {e}")
+        return "Nobody cares. Work harder."
+
 # --- 3. Update Google Sheets ---
-def update_google_sheet(weight, bmi, pushjerk_title, pushjerk_exercises):
+def update_google_sheet(weight, bmi, pushjerk_title, pushjerk_exercises, quote):
     """Pushes the aggregated data into your Google Sheet Database."""
     print("Connecting to Google Sheets...")
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -143,15 +170,13 @@ def update_google_sheet(weight, bmi, pushjerk_title, pushjerk_exercises):
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     
     # 1. Update WeightData Tab
-    if weight and bmi:
-        try:
-            weight_sheet = sheet.worksheet("WeightData")
-            weight_sheet.append_row([today_str, weight, bmi])
-            print("Updated WeightData.")
-        except gspread.exceptions.WorksheetNotFound:
-            raise ValueError("CRITICAL ERROR: Could not find a tab named 'WeightData' in your Google Sheet.")
-    else:
-        print("Warning: No weight data found to push.")
+    try:
+        weight_sheet = sheet.worksheet("WeightData")
+        # We save this even if weight is missing, so you still get your daily quote!
+        weight_sheet.append_row([today_str, weight if weight else "", bmi if bmi else "", quote])
+        print("Updated WeightData.")
+    except gspread.exceptions.WorksheetNotFound:
+        print("CRITICAL ERROR: Could not find a tab named 'WeightData' in your Google Sheet.")
     
     # 2. Update AvailableWorkouts Tab (Pushjerk)
     if pushjerk_title:
@@ -174,9 +199,10 @@ async def main():
     # Fetch Data (renpho is no longer async in the updated package)
     weight, bmi = get_latest_renpho_weight(renpho_email, renpho_password)
     title, exercises = get_and_parse_pushjerk(gemini_key)
+    quote = get_daily_quote(gemini_key)
     
     # Push to Sheets
-    update_google_sheet(weight, bmi, title, exercises)
+    update_google_sheet(weight, bmi, title, exercises, quote)
     print("Daily sync complete!")
 
 if __name__ == "__main__":
