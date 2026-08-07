@@ -92,8 +92,11 @@ def get_and_parse_pushjerk(gemini_api_key):
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
         exercises = json.loads(clean_json)
         
-        # Clean HTML tags from the raw RSS feed text
-        clean_desc = re.sub('<[^<]+>', '', raw_text).strip()
+        # Preserve line breaks before stripping HTML
+        clean_desc = re.sub(r'(?i)<br\s*/?>', '\n', raw_text)
+        clean_desc = re.sub(r'(?i)</p>', '\n\n', clean_desc)
+        clean_desc = re.sub('<[^<]+>', '', clean_desc).strip()
+        clean_desc = re.sub(r'\n{3,}', '\n\n', clean_desc) # Normalize multiple blank lines
         
         # Wrap the exercises and description into one payload
         payload = {
@@ -105,7 +108,10 @@ def get_and_parse_pushjerk(gemini_api_key):
     except Exception as e:
         print(f"Gemini Parsing Error: {e}")
         # Fallback if AI fails
-        clean_desc = re.sub('<[^<]+>', '', raw_text).strip()
+        clean_desc = re.sub(r'(?i)<br\s*/?>', '\n', raw_text)
+        clean_desc = re.sub(r'(?i)</p>', '\n\n', clean_desc)
+        clean_desc = re.sub('<[^<]+>', '', clean_desc).strip()
+        
         payload = {
             "description": clean_desc,
             "exercises": [{"name": "Failed to parse. See Pushjerk.com", "historyWeight": "0", "historyReps": "0", "trend": "same"}]
