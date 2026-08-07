@@ -7,6 +7,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from google import genai
 from google.genai import types
+import asyncio
 # The updated library uses "from renpho import RenphoClient"
 from renpho import RenphoClient  
 
