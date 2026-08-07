@@ -47,6 +47,7 @@ def get_and_parse_pushjerk(gemini_api_key):
     feed = feedparser.parse(feed_url)
     
     if not feed.entries:
+        print("No feed entries found.")
         return None, None
         
     latest_post = feed.entries[0]
@@ -55,13 +56,17 @@ def get_and_parse_pushjerk(gemini_api_key):
     
     print("Parsing WOD with Gemini...")
     
+    if not gemini_api_key:
+        print("ERROR: GEMINI_API_KEY is missing from environment variables.")
+        return title, [{"name": "AI Parsing Failed (No Key)", "historyWeight": "0", "historyReps": "0", "trend": "same"}]
+    
     try:
         # Initialize the new google.genai client
         client = genai.Client(api_key=gemini_api_key)
         
         prompt = f"""
         You are a fitness data extraction bot. Read the following CrossFit workout description and extract the distinct exercises.
-        Return ONLY a raw JSON array of objects. Do not include markdown formatting or backticks.
+        Return ONLY a raw JSON array of objects. Do not include markdown formatting, backticks, or any conversational text.
         Each object must have exactly these keys:
         "name": (String) The name of the exercise.
         "historyWeight": (String) Set to "Body" if it's a bodyweight movement, or "0" if it requires weight.
@@ -78,6 +83,10 @@ def get_and_parse_pushjerk(gemini_api_key):
             contents=prompt,
         )
         
+        print("--- GEMINI RAW RESPONSE ---")
+        print(response.text)
+        print("---------------------------")
+        
         # Clean up any potential markdown the AI accidentally includes
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
         exercises = json.loads(clean_json)
@@ -92,30 +101,47 @@ def update_google_sheet(weight, bmi, pushjerk_title, pushjerk_exercises):
     """Pushes the aggregated data into your Google Sheet Database."""
     print("Connecting to Google Sheets...")
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if not creds_json:
-        print("Skipping Sheets update: No Google credentials found.")
-        return
+        raise ValueError("CRITICAL ERROR: GOOGLE_CREDENTIALS_JSON is missing from GitHub Secrets.")
+
+    SHEET_ID = os.environ.get("GOOGLE_SHEET_ID")
+    if not SHEET_ID:
+        raise ValueError("CRITICAL ERROR: GOOGLE_SHEET_ID is missing from GitHub Secrets.")
 
     creds = Credentials.from_service_account_info(eval(creds_json), scopes=scopes)
     client = gspread.authorize(creds)
-    SHEET_ID = os.environ.get("GOOGLE_SHEET_ID")
-    sheet = client.open_by_key(SHEET_ID)
+    
+    try:
+        sheet = client.open_by_key(SHEET_ID)
+    except Exception as e:
+        raise ValueError(f"CRITICAL ERROR: Could not open Google Sheet. Did you share it with the service account email? Error: {e}")
+
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     
     # 1. Update WeightData Tab
     if weight and bmi:
-        weight_sheet = sheet.worksheet("WeightData")
-        weight_sheet.append_row([today_str, weight, bmi])
-        print("Updated WeightData.")
+        try:
+            weight_sheet = sheet.worksheet("WeightData")
+            weight_sheet.append_row([today_str, weight, bmi])
+            print("Updated WeightData.")
+        except gspread.exceptions.WorksheetNotFound:
+            raise ValueError("CRITICAL ERROR: Could not find a tab named 'WeightData' in your Google Sheet.")
+    else:
+        print("Warning: No weight data found to push.")
     
     # 2. Update AvailableWorkouts Tab (Pushjerk)
     if pushjerk_title:
-        workout_sheet = sheet.worksheet("AvailableWorkouts")
-        # Format: Date, Program, Title, JSON_Exercises
-        workout_sheet.append_row([today_str, "Pushjerk", pushjerk_title, json.dumps(pushjerk_exercises)])
-        print("Updated AvailableWorkouts (Pushjerk).")
+        try:
+            workout_sheet = sheet.worksheet("AvailableWorkouts")
+            # Format: Date, Program, Title, JSON_Exercises
+            workout_sheet.append_row([today_str, "Pushjerk", pushjerk_title, json.dumps(pushjerk_exercises)])
+            print("Updated AvailableWorkouts (Pushjerk).")
+        except gspread.exceptions.WorksheetNotFound:
+            raise ValueError("CRITICAL ERROR: Could not find a tab named 'AvailableWorkouts' in your Google Sheet.")
+    else:
+        print("Warning: No workout data found to push.")
 
 async def main():
     # Grab Secrets from environment
