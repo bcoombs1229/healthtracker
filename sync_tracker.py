@@ -1,12 +1,12 @@
 import os
 import datetime
 import json
+import re
 import feedparser
 import gspread
 from google.oauth2.service_account import Credentials
 from google import genai
-import asyncio
-
+from google.genai import types
 # The updated library uses "from renpho import RenphoClient"
 from renpho import RenphoClient  
 
@@ -77,7 +77,7 @@ def get_and_parse_pushjerk(gemini_api_key):
         {raw_text}
         """
         
-        # Use the new generate_content syntax
+        # Using the standard 1.5-flash model
         response = client.models.generate_content(
             model='gemini-3.6-flash',
             contents=prompt,
@@ -90,11 +90,26 @@ def get_and_parse_pushjerk(gemini_api_key):
         # Clean up any potential markdown the AI accidentally includes
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
         exercises = json.loads(clean_json)
-        return title, exercises
+        
+        # Clean HTML tags from the raw RSS feed text
+        clean_desc = re.sub('<[^<]+>', '', raw_text).strip()
+        
+        # Wrap the exercises and description into one payload
+        payload = {
+            "description": clean_desc,
+            "exercises": exercises
+        }
+        
+        return title, payload
     except Exception as e:
         print(f"Gemini Parsing Error: {e}")
         # Fallback if AI fails
-        return title, [{"name": "Failed to parse. See Pushjerk.com", "historyWeight": "0", "historyReps": "0", "trend": "same"}]
+        clean_desc = re.sub('<[^<]+>', '', raw_text).strip()
+        payload = {
+            "description": clean_desc,
+            "exercises": [{"name": "Failed to parse. See Pushjerk.com", "historyWeight": "0", "historyReps": "0", "trend": "same"}]
+        }
+        return title, payload
 
 # --- 3. Update Google Sheets ---
 def update_google_sheet(weight, bmi, pushjerk_title, pushjerk_exercises):
